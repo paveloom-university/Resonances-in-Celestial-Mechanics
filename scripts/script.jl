@@ -61,12 +61,6 @@ end
 "Padding in the output"
 pad = " "^4
 
-"Floating point type used across the script"
-F = Float64
-
-"Integer type used across the script"
-I = Int64
-
 # Define the paths
 CURRENT_DIR = @__DIR__
 ROOT_DIR = basename(CURRENT_DIR) == "scripts" ? dirname(CURRENT_DIR) : CURRENT_DIR
@@ -108,10 +102,23 @@ else
     data
 end
 a = map(e -> e["a"], data)
+e = map(e -> e["e"], data)
+i = map(e -> e["i"], data)
+M = map(e -> deg2rad(e["M"]), data)
 
-println(pad, "> Plotting the distribution...")
+# Compute the true anomaly
+ν = @. M +
+       (2 * e - e^3 / 4) * sin(M) +
+       5 / 4 * e^2 * sin(2 * M) +
+       13 / 12 * e^3 * sin(3 * M)
 
-function vline(x::F, label::String) where {F<:Real}
+# Get indices of the groups
+inner = findall(a -> a < 2.5, a)
+intermediate = findall(a -> 2.5 <= a <= 2.82, a)
+outer = findall(a -> 2.82 < a, a)
+
+"Add a vertical line to the plot"
+function vline(x, label)
     linewidth = 0.5
     ymax = ylims()[2]
     color = :black
@@ -134,15 +141,13 @@ function vline(x::F, label::String) where {F<:Real}
     annotate!([x], [ymax * 0.71], text(label, 9))
 end
 
+println(pad, "> Plotting the histogram...")
+
 # Plot the distribution
 left = 2.0
 right = 3.5
 histogram(
-    [
-        filter(a -> left <= a < 2.5, a),
-        filter(a -> 2.5 <= a <= 2.82, a),
-        filter(a -> 2.82 < a <= right, a),
-    ],
+    [a[inner], a[intermediate], a[outer]],
     label=[
         "Inner main-belt";;
         "Intermediate main-belt";;
@@ -165,7 +170,47 @@ vline(2.958, "7:3")
 vline(3.279, "2:1")
 
 # Save the figure
-savefig(joinpath(PLOTS_DIR, "a$(POSTFIX).pdf"))
+savefig(joinpath(PLOTS_DIR, "histogram$(POSTFIX).pdf"))
+
+println(pad, "> Plotting the scatter plot...")
+
+"Add the label to the plot's legend"
+function label(label, color_index)
+    scatter!(
+        [0],
+        [maximum(a) + 5],
+        color=palette(:default).colors[color_index],
+        markerstrokewidth=-1,
+        legend_font_valign=:bottom;
+        label
+    )
+end
+
+# Plot the projections
+left = 0.0
+right = 4.0
+xrange = range(0, 2π; step=π / 4)
+scatter(
+    [ν[inner], ν[intermediate], ν[outer]],
+    [a[inner], a[intermediate], a[outer]],
+    proj=:polar,
+    label="",
+    color=[1 2 3],
+    ylims=(left, right),
+    xticks=(xrange, map(x -> "$(rad2deg(x))°", xrange)),
+    yticks=range(left, right - 1, step=1),
+    ydraw_arrow=true,
+    markersize=0.5,
+    markerstrokewidth=-1,
+    legend=(1.0, 1.0),
+)
+annotate!([4.0], [right - 0.4], text(L"a", 9))
+label("Inner main-belt", 1)
+label("Intermediate main-belt", 2)
+label("Outer main-belt", 3)
+
+# Save the figure
+savefig(joinpath(PLOTS_DIR, "scatter$(POSTFIX).pdf"))
 
 # Mark the data for garbage collection
 data = nothing
